@@ -1,9 +1,12 @@
 ﻿using Newtonsoft.Json;
+using StockAnalyzer.Core;
 using StockAnalyzer.Core.Domain;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Navigation;
 
@@ -21,25 +24,63 @@ namespace StockAnalyzer.Windows
 
 
 
-        private void Search_Click(object sender, RoutedEventArgs e)
+        private async void Search_Click(object sender, RoutedEventArgs e)
         {
             BeforeLoadingStockData();
 
-            var client = new WebClient();
-
-            var content = client.DownloadString($"{API_URL}/{StockIdentifier.Text}");
-
-            // Simulate that the web call takes a very long time
-            Thread.Sleep(10000);
-
-            var data = JsonConvert.DeserializeObject<IEnumerable<StockPrice>>(content);
-
-            Stocks.ItemsSource = data;
+            await GetStocksLocal();
 
             AfterLoadingStockData();
         }
 
+        // Never use async void, async Task is the way to go
+        // if you get errors in async void - app crash :) 
+        // with async Task you can do a try/catch 
+        // with await you can catch what happens in the async methods
+        private async Task GetStocks()
+        {
+            try
+            {
+                using (var client = new HttpClient())
+                {
+                    var response = await client.GetAsync($"{API_URL}/{StockIdentifier.Text}");
 
+                    // GOOD - does not block
+                    var content = await response.Content.ReadAsStringAsync();
+
+                    // BAD - blocks the thread
+                    // var content = response.Content.ReadAsStringAsync().Result;
+
+                    var data = JsonConvert.DeserializeObject<IEnumerable<StockPrice>>(content);
+
+                    Stocks.ItemsSource = data;
+                }
+            }
+            catch (System.Exception e)
+            {
+                // Notes is WPF UI element
+                Notes.Text = "Kur " + e;
+                throw;
+            }
+            
+        }
+
+        private async Task GetStocksLocal()
+        {
+            try
+            {
+                var store = new DataStore();
+
+                var response = store.GetStockPrices(StockIdentifier.Text); // StockIdentifier is WPF UI element
+
+                Stocks.ItemsSource = await response;
+            }
+            catch (System.Exception e)
+            {
+                Notes.Text = "Nope - " + e.Message;
+            }
+
+        }
 
 
 
